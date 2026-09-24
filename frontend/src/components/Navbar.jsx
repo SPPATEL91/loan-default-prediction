@@ -58,7 +58,7 @@ function Navbar() {
             </li>
             <li className="nav-item ms-lg-2">
               <a 
-                href="http://localhost:8000/docs" 
+                href={`${import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"}/docs`} 
                 target="_blank" 
                 rel="noreferrer" 
                 className="btn btn-sm btn-outline-primary"

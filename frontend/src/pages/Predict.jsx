@@ -13,8 +13,8 @@
 
 import React, { useState, useEffect } from "react";
 
-// The FastAPI backend base URL
-const API_BASE_URL = "http://localhost:8000";
+// The FastAPI backend base URL (supports production environment variable)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 // Initial default state for all 16 loan application fields
 const INITIAL_FORM_DATA = {
