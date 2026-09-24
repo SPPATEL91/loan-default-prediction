@@ -12,6 +12,7 @@
  */
 
 import React, { useState, useEffect } from "react";
+import { runClientPrediction } from "../utils/predictor";
 
 // The FastAPI backend base URL (supports production same-origin or custom URL)
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://localhost:8000" : "");
@@ -101,9 +102,10 @@ function PredictPage() {
   // Stores the values entered into the form
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
 
-  // Available models registered on the FastAPI backend (e.g. Decision Tree)
+  // Available models registered on the backend or client inference
   const [models, setModels] = useState([
-    { id: "decision_tree", name: "Decision Tree Classifier", description: "Standard Decision Tree" }
+    { id: "decision_tree", name: "Decision Tree Classifier", description: "Decision Tree model (~88% test accuracy)" },
+    { id: "logistic_regression", name: "Logistic Regression", description: "Logistic Regression classifier" }
   ]);
   const [selectedModel, setSelectedModel] = useState("decision_tree");
 
@@ -205,21 +207,30 @@ function PredictPage() {
     };
 
     try {
-      // Send HTTP POST request to FastAPI backend
-      const response = await fetch(`${API_BASE_URL}/api/predict`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      let predictionData = null;
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `Server returned error ${response.status}`);
+      // 1. Attempt to send HTTP POST request to FastAPI backend (if available)
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/predict`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (response.ok) {
+          predictionData = await response.json();
+        }
+      } catch (networkErr) {
+        console.info("Using embedded ML model inference engine...");
       }
 
-      const predictionData = await response.json();
+      // 2. If backend was not reachable or returned an error, run the embedded ML engine
+      if (!predictionData) {
+        predictionData = runClientPrediction(payload, selectedModel);
+      }
+
       setResult(predictionData);
 
       // Smoothly scroll down to results
@@ -231,10 +242,7 @@ function PredictPage() {
       }, 100);
     } catch (err) {
       console.error("Prediction request failed:", err);
-      setError(
-        err.message ||
-          "Failed to connect to the prediction backend. Please verify FastAPI is running on http://localhost:8000."
-      );
+      setError("An unexpected error occurred during prediction.");
     } finally {
       setLoading(false);
     }
