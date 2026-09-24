@@ -1,4 +1,4 @@
-import { DECISION_TREE_MODEL, LOGISTIC_REGRESSION_MODEL } from './modelsData';
+import { DECISION_TREE_MODEL, LOGISTIC_REGRESSION_MODEL } from './modelsData.js';
 
 export function runClientPrediction(data, modelId = "decision_tree") {
   // 1. Binary features
