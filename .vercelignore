@@ -1,0 +1,18 @@
+# Ignore large training data not needed at runtime
+data/
+data/Loan_default.csv
+
+# Ignore exploratory notebooks
+notebooks-containing-models/*.ipynb
+notebooks-containing-models/*.xlsx
+
+# Ignore heavy KNN model (47MB) to stay within Vercel's 250MB serverless limit
+notebooks-containing-models/KNNModel.pkl
+
+# Ignore local environments & caches
+backend/venv/
+.venv/
+.pytest_cache/
+.ipynb_checkpoints/
+anaconda_projects/
+frontend/node_modules/
