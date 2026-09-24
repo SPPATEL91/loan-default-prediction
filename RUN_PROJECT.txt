@@ -1,0 +1,39 @@
+LOAN DEFAULT PREDICTION — HOW TO RUN
+=====================================
+
+Open TWO Command Prompt (cmd) or PowerShell windows.
+
+IMPORTANT: Start both commands from the project root folder:
+"c:\Users\HP\OneDrive\Desktop\ML PROJECT\loan-default-prediction - Copy"
+
+
+1. START THE BACKEND
+--------------------
+
+In the first window, run:
+
+cd "c:\Users\HP\OneDrive\Desktop\ML PROJECT\loan-default-prediction - Copy"
+.\backend\venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8000
+
+Backend links:
+- API:  http://localhost:8000
+- API documentation:  http://localhost:8000/docs
+- Health check:  http://localhost:8000/api/health
+
+
+2. START THE FRONTEND
+---------------------
+
+In the second window, run:
+
+cd "c:\Users\HP\OneDrive\Desktop\ML PROJECT\loan-default-prediction - Copy\frontend"
+npm run dev
+
+Frontend link:
+- Website:  http://localhost:5173
+
+
+3. STOP A SERVER
+----------------
+
+Press Ctrl + C in the respective terminal window.

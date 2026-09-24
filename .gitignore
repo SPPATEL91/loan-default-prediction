@@ -1,0 +1,60 @@
+# Virtual Environments
+backend/venv/
+venv/
+env/
+ENV/
+.venv/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python cache & artifacts
+__pycache__/
+*/__pycache__/
+*/**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing & Notebooks
+.pytest_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Environment Variables
+.env
+.env.local
+
+# Local Anaconda artifacts
+anaconda_projects/
