@@ -3,8 +3,8 @@ import React, { useEffect, useRef } from 'react';
 /**
  * AmbientBackground.jsx
  * =====================
- * Institutional dark-mode background with ambient cursor glow,
- * radial gradients, and subtle structural grid mesh.
+ * Premium Light Theme background layer with ambient cursor glow,
+ * subtle indigo/cyan radial gradients, and clean grid mesh.
  */
 function AmbientBackground() {
   const glowRef = useRef(null);
@@ -12,7 +12,6 @@ function AmbientBackground() {
   useEffect(() => {
     const handleMouseMove = (e) => {
       if (glowRef.current) {
-        // Move the subtle ambient glow towards cursor with 0.1s lag for smooth fluidity
         glowRef.current.style.transform = `translate(${e.clientX - 250}px, ${e.clientY - 250}px)`;
       }
     };
@@ -23,10 +22,10 @@ function AmbientBackground() {
 
   return (
     <>
-      {/* Grid overlay */}
+      {/* Light grid overlay */}
       <div className="ambient-grid" />
       
-      {/* Cursor-responsive ambient glow */}
+      {/* Soft Light Cursor-responsive ambient glow */}
       <div
         ref={glowRef}
         style={{
@@ -36,7 +35,7 @@ function AmbientBackground() {
           width: '500px',
           height: '500px',
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(124, 92, 255, 0.08) 0%, rgba(34, 211, 238, 0.03) 40%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(79, 70, 229, 0.06) 0%, rgba(2, 132, 199, 0.03) 40%, transparent 70%)',
           pointerEvents: 'none',
           zIndex: 0,
           transition: 'transform 0.25s cubic-bezier(0.1, 1, 0.1, 1)',

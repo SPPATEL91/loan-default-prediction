@@ -158,16 +158,25 @@ function PredictPage() {
     setError(null);
     setLoadingStep(1);
 
+    let dtiVal = parseFloat(formData.DTIRatio);
+    if (isNaN(dtiVal)) dtiVal = 0.28;
+    if (dtiVal > 1.0) dtiVal = dtiVal / 100.0;
+    dtiVal = Math.min(1.0, Math.max(0.0, dtiVal));
+
+    let interestRateVal = parseFloat(formData.InterestRate);
+    if (isNaN(interestRateVal)) interestRateVal = 7.5;
+    if (interestRateVal > 0 && interestRateVal < 1.0) interestRateVal = interestRateVal * 100.0;
+
     const payload = {
-      Age: parseInt(formData.Age, 10),
-      Income: parseFloat(formData.Income),
-      LoanAmount: parseFloat(formData.LoanAmount),
-      CreditScore: parseInt(formData.CreditScore, 10),
-      MonthsEmployed: parseInt(formData.MonthsEmployed, 10),
-      NumCreditLines: parseInt(formData.NumCreditLines, 10),
-      InterestRate: parseFloat(formData.InterestRate),
-      LoanTerm: parseInt(formData.LoanTerm, 10),
-      DTIRatio: parseFloat(formData.DTIRatio),
+      Age: parseInt(formData.Age, 10) || 35,
+      Income: parseFloat(formData.Income) || 50000,
+      LoanAmount: parseFloat(formData.LoanAmount) || 15000,
+      CreditScore: parseInt(formData.CreditScore, 10) || 700,
+      MonthsEmployed: parseInt(formData.MonthsEmployed, 10) || 24,
+      NumCreditLines: parseInt(formData.NumCreditLines, 10) || 3,
+      InterestRate: interestRateVal,
+      LoanTerm: parseInt(formData.LoanTerm, 10) || 36,
+      DTIRatio: dtiVal,
       Education: formData.Education,
       EmploymentType: formData.EmploymentType,
       MaritalStatus: formData.MaritalStatus,
@@ -229,7 +238,8 @@ function PredictPage() {
 
   // Calculated metrics for live preview
   const ltiRatio = (parseFloat(formData.LoanAmount || 0) / (parseFloat(formData.Income || 1))).toFixed(2);
-  const currentDtiPercent = (parseFloat(formData.DTIRatio || 0) * 100).toFixed(0);
+  const rawDti = parseFloat(formData.DTIRatio || 0);
+  const currentDtiPercent = rawDti > 1.0 ? rawDti.toFixed(0) : (rawDti * 100).toFixed(0);
 
   return (
     <div className="workspace-wrapper">
@@ -484,19 +494,19 @@ function PredictPage() {
                   {/* Debt-to-Income (DTI) Ratio */}
                   <div className="input-group-custom">
                     <label className="input-label-custom">
-                      <span>Debt-to-Income (DTI) Ratio</span>
+                      <span>Debt-to-Income (DTI)</span>
                       <span className="font-mono text-muted">{currentDtiPercent}%</span>
                     </label>
                     <div className="input-field-wrapper">
                       <input
                         type="number"
                         name="DTIRatio"
-                        step="0.01"
+                        step="any"
                         min="0"
-                        max="1"
                         className="input-control font-mono"
                         value={formData.DTIRatio}
                         onChange={handleChange}
+                        placeholder="e.g. 0.28 or 28"
                         required
                       />
                       <span className="input-suffix">ratio</span>
