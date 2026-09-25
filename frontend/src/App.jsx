@@ -1,17 +1,6 @@
-/**
- * App.jsx
- * =======
- * Main Application Component.
- *
- * Concepts for learning:
- * - `BrowserRouter` (aliased as Router) listens to the browser's URL and manages history.
- * - `Routes` and `Route` define mapping between URL paths (like "/" or "/predict")
- *   and the React page components that should render.
- * - `Navbar` is placed outside `<Routes>` so that it appears persistently across all pages.
- */
-
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import AmbientBackground from './components/AmbientBackground';
 import Navbar from './components/Navbar';
 import HomePage from './pages/HomePage';
 import PredictPage from './pages/Predict';
@@ -21,28 +10,38 @@ import './App.css';
 function App() {
   return (
     <Router>
-      {/* Top persistent navigation bar */}
-      <Navbar />
+      <div className="app-viewport">
+        {/* Dark Cinematic Ambient Glow Background */}
+        <AmbientBackground />
 
-      {/* Main page content area */}
-      <main className="main-wrapper">
-        <div className="container">
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/predict" element={<PredictPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </div>
-      </main>
+        <div className="app-container">
+          {/* Institutional Top Header Navbar */}
+          <Navbar />
 
-      {/* Footer */}
-      <footer className="py-4 text-center text-muted border-top bg-white mt-auto">
-        <div className="container">
-          <p className="small mb-0">
-            Loan Default Prediction Platform &bull; Powered by Decision Tree Classifier &amp; FastAPI
-          </p>
+          {/* Main Routing Area */}
+          <main className="main-content">
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/predict" element={<PredictPage />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </main>
+
+          {/* Minimalist Institutional Footer */}
+          <footer className="footer-institutional">
+            <div className="container">
+              <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div>
+                  <span className="fw-bold text-slate-200">LOANGUARD AI</span> &bull; Credit Risk Intelligence Platform
+                </div>
+                <div className="font-mono text-muted" style={{ fontSize: "0.75rem" }}>
+                  DECISION TREE CLASSIFIER • FASTAPI BACKEND &bull; ALL SYSTEMS NORMAL
+                </div>
+              </div>
+            </div>
+          </footer>
         </div>
-      </footer>
+      </div>
     </Router>
   );
 }

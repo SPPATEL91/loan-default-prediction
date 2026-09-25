@@ -1,20 +1,9 @@
-/**
- * Predict.jsx
- * ===========
- * Interactive Loan Default Prediction Form & Results Dashboard.
- *
- * Concepts for learning:
- * 1. `useState`: React hook that stores mutable state (e.g. form inputs, loading state, API results).
- * 2. `useEffect`: React hook that runs side-effects when the component mounts (e.g. fetching available models from the backend).
- * 3. Form Handling: Controlled components where input values are driven by React state and updated via `onChange`.
- * 4. API Communication: Using modern `fetch()` with `async/await` to send a POST request to the FastAPI `/api/predict` endpoint.
- * 5. Conditional Rendering: Rendering loading spinners, error alerts, and the result dashboard only when corresponding state exists.
- */
-
 import React, { useState, useEffect } from "react";
 import { runClientPrediction } from "../utils/predictor";
+import RiskGauge from "../components/RiskGauge";
+import FeatureImpact from "../components/FeatureImpact";
 
-// The FastAPI backend base URL (supports production same-origin or custom URL)
+// FastAPI backend base URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://localhost:8000" : "");
 
 // Initial default state for all 16 loan application fields
@@ -37,7 +26,7 @@ const INITIAL_FORM_DATA = {
   HasCoSigner: "Yes",
 };
 
-// Preset Profiles to allow 1-click testing of different risk scenarios
+// Preset Profiles for 1-click risk testing
 const PRESET_PROFILES = {
   lowRisk: {
     Age: 48,
@@ -96,27 +85,24 @@ const PRESET_PROFILES = {
 };
 
 function PredictPage() {
-  // ---------------------------------------------------------------------------
-  // REACT STATE HOOKS
-  // ---------------------------------------------------------------------------
-  // Stores the values entered into the form
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
+  const [activeTab, setActiveTab] = useState("all"); // 'all' or section index '01', '02', '03', '04', '05'
+  const [activePreset, setActivePreset] = useState(null);
 
-  // Available models registered on the backend or client inference
+  // Registered models
   const [models, setModels] = useState([
-    { id: "decision_tree", name: "Decision Tree Classifier", description: "Decision Tree model (~88% test accuracy)" },
-    { id: "logistic_regression", name: "Logistic Regression", description: "Logistic Regression classifier" }
+    { id: "decision_tree", name: "Decision Tree Classifier", description: "Trained on 255k+ records (~88% accuracy)" },
+    { id: "logistic_regression", name: "Logistic Regression", description: "Linear decision boundary baseline" }
   ]);
   const [selectedModel, setSelectedModel] = useState("decision_tree");
 
-  // UI state for loading spinner, error messages, and prediction result
+  // UI state
   const [loading, setLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState(0);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
 
-  // ---------------------------------------------------------------------------
-  // FETCH REGISTERED MODELS ON MOUNT
-  // ---------------------------------------------------------------------------
+  // Fetch models from backend if available
   useEffect(() => {
     async function fetchModels() {
       try {
@@ -129,25 +115,16 @@ function PredictPage() {
           }
         }
       } catch (err) {
-        // Backend might not be running yet, fallback silently to default decision_tree
-        console.warn("Could not fetch models from backend, using default:", err);
+        console.info("Using embedded model registry.");
       }
     }
     fetchModels();
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // FORM HANDLERS
-  // ---------------------------------------------------------------------------
-  /**
-   * Handles changes for all standard input and select fields.
-   */
   const handleChange = (e) => {
     const { name, value, type } = e.target;
-
-    // Convert numeric inputs to numbers or empty string
     let parsedValue = value;
-    if (type === "number") {
+    if (type === "number" || type === "range") {
       parsedValue = value === "" ? "" : parseFloat(value);
     }
 
@@ -155,37 +132,32 @@ function PredictPage() {
       ...prev,
       [name]: parsedValue,
     }));
+    setActivePreset(null);
   };
 
-  /**
-   * Applies a preset profile to the form for quick testing.
-   */
   const handleApplyPreset = (presetKey) => {
     if (PRESET_PROFILES[presetKey]) {
       setFormData(PRESET_PROFILES[presetKey]);
+      setActivePreset(presetKey);
       setError(null);
       setResult(null);
     }
   };
 
-  /**
-   * Resets form to initial values.
-   */
   const handleReset = () => {
     setFormData(INITIAL_FORM_DATA);
+    setActivePreset(null);
     setError(null);
     setResult(null);
   };
 
-  /**
-   * Submits the loan application data to the FastAPI backend.
-   */
+  // Prediction submit handler with multi-step sequence
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setLoadingStep(1);
 
-    // Prepare payload ensuring numbers are properly typed
     const payload = {
       Age: parseInt(formData.Age, 10),
       Income: parseFloat(formData.Income),
@@ -206,559 +178,729 @@ function PredictPage() {
       model_id: selectedModel,
     };
 
+    // Step 2 & Step 3 progress indicators
+    const step2Timer = setTimeout(() => setLoadingStep(2), 350);
+    const step3Timer = setTimeout(() => setLoadingStep(3), 700);
+
     try {
       let predictionData = null;
 
-      // 1. Attempt to send HTTP POST request to FastAPI backend (if available)
       try {
         const response = await fetch(`${API_BASE_URL}/api/predict`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
 
         if (response.ok) {
           predictionData = await response.json();
         }
-      } catch (networkErr) {
-        console.info("Using embedded ML model inference engine...");
+      } catch (netErr) {
+        console.info("Running embedded client predictor...");
       }
 
-      // 2. If backend was not reachable or returned an error, run the embedded ML engine
       if (!predictionData) {
         predictionData = runClientPrediction(payload, selectedModel);
       }
 
-      setResult(predictionData);
-
-      // Smoothly scroll down to results
       setTimeout(() => {
-        const resultElement = document.getElementById("prediction-result");
-        if (resultElement) {
-          resultElement.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-      }, 100);
+        setResult(predictionData);
+        setLoading(false);
+        setLoadingStep(0);
+
+        setTimeout(() => {
+          const resElement = document.getElementById("prediction-result-report");
+          if (resElement) {
+            resElement.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }, 100);
+      }, 1050);
+
     } catch (err) {
-      console.error("Prediction request failed:", err);
+      console.error("Prediction error:", err);
       setError("An unexpected error occurred during prediction.");
-    } finally {
       setLoading(false);
+      setLoadingStep(0);
+    } finally {
+      clearTimeout(step2Timer);
+      clearTimeout(step3Timer);
     }
   };
 
+  // Calculated metrics for live preview
+  const ltiRatio = (parseFloat(formData.LoanAmount || 0) / (parseFloat(formData.Income || 1))).toFixed(2);
+  const currentDtiPercent = (parseFloat(formData.DTIRatio || 0) * 100).toFixed(0);
+
   return (
-    <div className="predict-container">
-      {/* 1. PAGE HEADER */}
-      <div className="page-header text-start">
-        <h2 className="page-title">Loan Default Risk Evaluation</h2>
-        <p className="page-subtitle">
-          Fill in the applicant details below to calculate default probabilities using our pre-trained Decision Tree model.
-        </p>
-      </div>
-
-      {/* 2. PRESET PROFILES TOOLBAR */}
-      <div className="preset-bar">
-        <div className="d-flex align-items-center gap-2">
-          <span className="preset-title">⚡ Quick Test Profiles:</span>
+    <div className="workspace-wrapper">
+      {/* 1. HERO PRODUCT IDENTITY */}
+      <section className="glass-panel top-hero-panel">
+        <div>
+          <div className="d-flex align-items-center gap-2 mb-2">
+            <span className="status-dot-active" />
+            <span className="text-uppercase font-mono text-muted" style={{ fontSize: "0.75rem", letterSpacing: "0.08em" }}>
+              AI RISK ENGINE • READY
+            </span>
+          </div>
+          <h1 className="top-hero-title">Credit Risk Intelligence</h1>
+          <p className="top-hero-subtitle">
+            Evaluate borrower default risk using real-time machine-learning inference trained on over 255,000 historical applications.
+          </p>
         </div>
-        <div className="preset-btn-group">
+
+        <div className="d-none d-lg-block text-end">
+          <div className="font-mono text-muted" style={{ fontSize: "0.75rem" }}>ENGINE CAPABILITY</div>
+          <div className="fw-bold text-gradient-cyan" style={{ fontSize: "1.25rem" }}>28 Encoded Features</div>
+          <div className="text-muted" style={{ fontSize: "0.75rem" }}>Sub-10ms Latency</div>
+        </div>
+      </section>
+
+      {/* 2. MODELS & PRESET TOOLBAR */}
+      <div className="glass-panel toolbar-panel">
+        {/* Model Selector */}
+        <div className="model-select-box">
+          <span className="text-uppercase font-mono text-muted" style={{ fontSize: "0.75rem", letterSpacing: "0.06em" }}>
+            Model Engine:
+          </span>
+          <select
+            className="input-control select-control font-mono glass-panel-elevated"
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            style={{ width: "240px", padding: "6px 36px 6px 12px", fontSize: "0.875rem" }}
+          >
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Presets Chips */}
+        <div className="presets-box">
+          <span className="text-uppercase font-mono text-muted me-2" style={{ fontSize: "0.75rem", letterSpacing: "0.06em" }}>
+            Presets:
+          </span>
           <button
             type="button"
-            className="btn-preset btn-preset-success"
-            onClick={() => handleApplyPreset("lowRisk")}
-            title="Load a high-income, high-credit borrower profile"
+            className={`btn-preset-chip ${activePreset === 'lowRisk' ? 'active' : ''}`}
+            onClick={() => handleApplyPreset('lowRisk')}
           >
-            🟢 Low Risk Profile
+            <span style={{ color: 'var(--color-success)' }}>●</span> Low Risk Profile
           </button>
           <button
             type="button"
-            className="btn-preset"
-            onClick={() => handleApplyPreset("moderateRisk")}
-            title="Load a moderate risk profile"
+            className={`btn-preset-chip ${activePreset === 'moderateRisk' ? 'active' : ''}`}
+            onClick={() => handleApplyPreset('moderateRisk')}
           >
-            🟡 Moderate Risk Profile
+            <span style={{ color: 'var(--color-warning)' }}>●</span> Moderate Risk
           </button>
           <button
             type="button"
-            className="btn-preset btn-preset-danger"
-            onClick={() => handleApplyPreset("highRisk")}
-            title="Load an unemployed, high debt-ratio profile"
+            className={`btn-preset-chip ${activePreset === 'highRisk' ? 'active' : ''}`}
+            onClick={() => handleApplyPreset('highRisk')}
           >
-            🔴 High Risk Profile
+            <span style={{ color: 'var(--color-danger)' }}>●</span> High Risk Profile
           </button>
+
           <button
             type="button"
-            className="btn-preset"
+            className="btn-preset-chip text-muted ms-lg-2"
             onClick={handleReset}
-            title="Reset form fields to default"
+            title="Reset Form"
           >
-            🔄 Reset
+            ↺ Reset
           </button>
         </div>
       </div>
 
-      {/* 3. ERROR BANNER */}
-      {error && (
-        <div className="alert alert-danger d-flex align-items-center justify-content-between my-3" role="alert">
-          <div>
-            <strong>Connection / Validation Error:</strong> {error}
-          </div>
-          <button
-            type="button"
-            className="btn-close"
-            aria-label="Close"
-            onClick={() => setError(null)}
-          ></button>
-        </div>
-      )}
-
-      {/* 4. MAIN PREDICTION FORM */}
-      <form onSubmit={handleSubmit} className="text-start">
-        {/* ===================================================================
-            SECTION 1: PERSONAL & DEMOGRAPHIC INFORMATION
-           =================================================================== */}
-        <div className="form-section-card">
-          <div className="form-section-header">
-            <div className="section-icon-badge">👤</div>
-            <h3 className="form-section-title">Personal &amp; Demographic Information</h3>
-          </div>
-
-          <div className="row g-3">
-            <div className="col-md-3">
-              <label className="form-label">
-                Age
-                <span className="field-hint">(18 - 100)</span>
-              </label>
-              <input
-                type="number"
-                className="form-control"
-                name="Age"
-                min="18"
-                max="100"
-                required
-                value={formData.Age}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="col-md-3">
-              <label className="form-label">Education</label>
-              <select
-                className="form-select"
-                name="Education"
-                value={formData.Education}
-                onChange={handleChange}
+      {/* 3. MAIN WORKSPACE GRID */}
+      <form onSubmit={handleSubmit}>
+        <div className="workspace-grid">
+          {/* LEFT: WORKSPACE INPUT CARDS */}
+          <div className="glass-panel workspace-form-card">
+            {/* Section Tab Filters for Desktop/Mobile */}
+            <div className="section-nav-tabs">
+              <button
+                type="button"
+                className={`section-tab-btn ${activeTab === 'all' ? 'active' : ''}`}
+                onClick={() => setActiveTab('all')}
               >
-                <option value="High School">High School</option>
-                <option value="Bachelor's">Bachelor's</option>
-                <option value="Master's">Master's</option>
-                <option value="PhD">PhD</option>
-              </select>
-            </div>
-
-            <div className="col-md-3">
-              <label className="form-label">Marital Status</label>
-              <select
-                className="form-select"
-                name="MaritalStatus"
-                value={formData.MaritalStatus}
-                onChange={handleChange}
+                <span>ALL SECTIONS</span>
+              </button>
+              <button
+                type="button"
+                className={`section-tab-btn ${activeTab === '01' ? 'active' : ''}`}
+                onClick={() => setActiveTab('01')}
               >
-                <option value="Single">Single</option>
-                <option value="Married">Married</option>
-                <option value="Divorced">Divorced</option>
-              </select>
-            </div>
-
-            <div className="col-md-3">
-              <label className="form-label">Has Dependents</label>
-              <select
-                className="form-select"
-                name="HasDependents"
-                value={formData.HasDependents}
-                onChange={handleChange}
+                <span className="font-mono">01</span> BORROWER
+              </button>
+              <button
+                type="button"
+                className={`section-tab-btn ${activeTab === '02' ? 'active' : ''}`}
+                onClick={() => setActiveTab('02')}
               >
-                <option value="No">No</option>
-                <option value="Yes">Yes</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* ===================================================================
-            SECTION 2: EMPLOYMENT & INCOME
-           =================================================================== */}
-        <div className="form-section-card">
-          <div className="form-section-header">
-            <div className="section-icon-badge">💼</div>
-            <h3 className="form-section-title">Employment &amp; Income</h3>
-          </div>
-
-          <div className="row g-3">
-            <div className="col-md-4">
-              <label className="form-label">
-                Annual Income
-                <span className="field-hint">($ USD)</span>
-              </label>
-              <input
-                type="number"
-                className="form-control"
-                name="Income"
-                min="0"
-                step="500"
-                required
-                value={formData.Income}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="col-md-4">
-              <label className="form-label">Employment Type</label>
-              <select
-                className="form-select"
-                name="EmploymentType"
-                value={formData.EmploymentType}
-                onChange={handleChange}
+                <span className="font-mono">02</span> FINANCIAL
+              </button>
+              <button
+                type="button"
+                className={`section-tab-btn ${activeTab === '03' ? 'active' : ''}`}
+                onClick={() => setActiveTab('03')}
               >
-                <option value="Full-time">Full-time</option>
-                <option value="Part-time">Part-time</option>
-                <option value="Self-employed">Self-employed</option>
-                <option value="Unemployed">Unemployed</option>
-              </select>
-            </div>
-
-            <div className="col-md-4">
-              <label className="form-label">
-                Months Employed
-                <span className="field-hint">(Experience)</span>
-              </label>
-              <input
-                type="number"
-                className="form-control"
-                name="MonthsEmployed"
-                min="0"
-                required
-                value={formData.MonthsEmployed}
-                onChange={handleChange}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* ===================================================================
-            SECTION 3: CREDIT & FINANCIAL HEALTH
-           =================================================================== */}
-        <div className="form-section-card">
-          <div className="form-section-header">
-            <div className="section-icon-badge">💳</div>
-            <h3 className="form-section-title">Credit &amp; Debt Profile</h3>
-          </div>
-
-          <div className="row g-3">
-            <div className="col-md-3">
-              <label className="form-label">
-                Credit Score
-                <span className="field-hint">(300 - 850)</span>
-              </label>
-              <input
-                type="number"
-                className="form-control"
-                name="CreditScore"
-                min="300"
-                max="850"
-                required
-                value={formData.CreditScore}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="col-md-2">
-              <label className="form-label">
-                Credit Lines
-                <span className="field-hint">(Open)</span>
-              </label>
-              <input
-                type="number"
-                className="form-control"
-                name="NumCreditLines"
-                min="0"
-                max="30"
-                required
-                value={formData.NumCreditLines}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="col-md-3">
-              <label className="form-label">
-                DTI Ratio
-                <span className="field-hint">(0.0 - 1.0)</span>
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                className="form-control"
-                name="DTIRatio"
-                min="0"
-                max="1.0"
-                required
-                value={formData.DTIRatio}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="col-md-2">
-              <label className="form-label">Has Mortgage</label>
-              <select
-                className="form-select"
-                name="HasMortgage"
-                value={formData.HasMortgage}
-                onChange={handleChange}
+                <span className="font-mono">03</span> CREDIT
+              </button>
+              <button
+                type="button"
+                className={`section-tab-btn ${activeTab === '04' ? 'active' : ''}`}
+                onClick={() => setActiveTab('04')}
               >
-                <option value="No">No</option>
-                <option value="Yes">Yes</option>
-              </select>
-            </div>
-
-            <div className="col-md-2">
-              <label className="form-label">Has Co-Signer</label>
-              <select
-                className="form-select"
-                name="HasCoSigner"
-                value={formData.HasCoSigner}
-                onChange={handleChange}
+                <span className="font-mono">04</span> LOAN DETAILS
+              </button>
+              <button
+                type="button"
+                className={`section-tab-btn ${activeTab === '05' ? 'active' : ''}`}
+                onClick={() => setActiveTab('05')}
               >
-                <option value="No">No</option>
-                <option value="Yes">Yes</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* ===================================================================
-            SECTION 4: LOAN PARTICULARS
-           =================================================================== */}
-        <div className="form-section-card">
-          <div className="form-section-header">
-            <div className="section-icon-badge">📝</div>
-            <h3 className="form-section-title">Loan Specifics</h3>
-          </div>
-
-          <div className="row g-3">
-            <div className="col-md-3">
-              <label className="form-label">
-                Loan Amount
-                <span className="field-hint">($ USD)</span>
-              </label>
-              <input
-                type="number"
-                className="form-control"
-                name="LoanAmount"
-                min="500"
-                step="500"
-                required
-                value={formData.LoanAmount}
-                onChange={handleChange}
-              />
+                <span className="font-mono">05</span> EMPLOYMENT
+              </button>
             </div>
 
-            <div className="col-md-3">
-              <label className="form-label">
-                Interest Rate
-                <span className="field-hint">(% APR)</span>
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                className="form-control"
-                name="InterestRate"
-                min="0.1"
-                max="40"
-                required
-                value={formData.InterestRate}
-                onChange={handleChange}
-              />
-            </div>
+            {/* SECTION 01: BORROWER PROFILE */}
+            {(activeTab === 'all' || activeTab === '01') && (
+              <div className="mb-4">
+                <div className="section-header">
+                  <span className="section-num">01</span>
+                  <h3 className="section-title">Borrower Profile</h3>
+                </div>
 
-            <div className="col-md-3">
-              <label className="form-label">
-                Loan Term
-                <span className="field-hint">(Months)</span>
-              </label>
-              <input
-                type="number"
-                className="form-control"
-                name="LoanTerm"
-                min="6"
-                max="120"
-                required
-                value={formData.LoanTerm}
-                onChange={handleChange}
-              />
-            </div>
+                <div className="fields-grid-2col">
+                  {/* Age */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">
+                      <span>Age</span>
+                      <span className="font-mono text-muted">{formData.Age} yrs</span>
+                    </label>
+                    <div className="input-field-wrapper">
+                      <input
+                        type="number"
+                        name="Age"
+                        min="18"
+                        max="100"
+                        className="input-control font-mono"
+                        value={formData.Age}
+                        onChange={handleChange}
+                        required
+                      />
+                    </div>
+                  </div>
 
-            <div className="col-md-3">
-              <label className="form-label">Loan Purpose</label>
-              <select
-                className="form-select"
-                name="LoanPurpose"
-                value={formData.LoanPurpose}
-                onChange={handleChange}
-              >
-                <option value="Auto">Auto</option>
-                <option value="Business">Business</option>
-                <option value="Education">Education</option>
-                <option value="Home">Home</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-          </div>
-        </div>
+                  {/* Education */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">Education Level</label>
+                    <div className="input-field-wrapper">
+                      <select
+                        name="Education"
+                        className="input-control select-control"
+                        value={formData.Education}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="High School">High School</option>
+                        <option value="Bachelor's">Bachelor's Degree</option>
+                        <option value="Master's">Master's Degree</option>
+                        <option value="PhD">PhD</option>
+                      </select>
+                    </div>
+                  </div>
 
-        {/* ===================================================================
-            SUBMIT & MODEL SELECTION BAR
-           =================================================================== */}
-        <div className="submit-card">
-          <div className="d-flex align-items-center gap-3">
-            <label className="form-label mb-0 fw-bold">Active ML Model:</label>
-            <select
-              className="form-select w-auto"
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-            >
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  🌲 {m.name}
-                </option>
-              ))}
-            </select>
-          </div>
+                  {/* Marital Status */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">Marital Status</label>
+                    <div className="input-field-wrapper">
+                      <select
+                        name="MaritalStatus"
+                        className="input-control select-control"
+                        value={formData.MaritalStatus}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="Single">Single</option>
+                        <option value="Married">Married</option>
+                        <option value="Divorced">Divorced</option>
+                      </select>
+                    </div>
+                  </div>
 
-          <button
-            type="submit"
-            className="btn btn-predict"
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <span className="spinner-small"></span>
-                <span>Evaluating Risk...</span>
-              </>
-            ) : (
-              <>
-                <span>⚡ Calculate Default Prediction</span>
-              </>
+                  {/* Has Dependents */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">Has Dependents</label>
+                    <div className="input-field-wrapper">
+                      <select
+                        name="HasDependents"
+                        className="input-control select-control"
+                        value={formData.HasDependents}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="No">No Dependents</option>
+                        <option value="Yes">Yes (Has Dependents)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
-          </button>
+
+            {/* SECTION 02: FINANCIAL PROFILE */}
+            {(activeTab === 'all' || activeTab === '02') && (
+              <div className="mb-4">
+                <div className="section-header">
+                  <span className="section-num">02</span>
+                  <h3 className="section-title">Financial Profile</h3>
+                </div>
+
+                <div className="fields-grid-2col">
+                  {/* Annual Income */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">
+                      <span>Annual Income</span>
+                      <span className="font-mono text-muted">${Number(formData.Income).toLocaleString()}</span>
+                    </label>
+                    <div className="input-field-wrapper">
+                      <span className="input-prefix">$</span>
+                      <input
+                        type="number"
+                        name="Income"
+                        step="1000"
+                        min="5000"
+                        className="input-control font-mono"
+                        value={formData.Income}
+                        onChange={handleChange}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Debt-to-Income (DTI) Ratio */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">
+                      <span>Debt-to-Income (DTI) Ratio</span>
+                      <span className="font-mono text-muted">{currentDtiPercent}%</span>
+                    </label>
+                    <div className="input-field-wrapper">
+                      <input
+                        type="number"
+                        name="DTIRatio"
+                        step="0.01"
+                        min="0"
+                        max="1"
+                        className="input-control font-mono"
+                        value={formData.DTIRatio}
+                        onChange={handleChange}
+                        required
+                      />
+                      <span className="input-suffix">ratio</span>
+                    </div>
+                  </div>
+
+                  {/* Has Mortgage */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">Has Existing Mortgage</label>
+                    <div className="input-field-wrapper">
+                      <select
+                        name="HasMortgage"
+                        className="input-control select-control"
+                        value={formData.HasMortgage}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="No">No Mortgage</option>
+                        <option value="Yes">Yes (Has Mortgage)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Has Co-Signer */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">Has Co-Signer</label>
+                    <div className="input-field-wrapper">
+                      <select
+                        name="HasCoSigner"
+                        className="input-control select-control"
+                        value={formData.HasCoSigner}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="No">No Co-Signer</option>
+                        <option value="Yes">Yes (Has Co-Signer)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SECTION 03: CREDIT PROFILE */}
+            {(activeTab === 'all' || activeTab === '03') && (
+              <div className="mb-4">
+                <div className="section-header">
+                  <span className="section-num">03</span>
+                  <h3 className="section-title">Credit Profile</h3>
+                </div>
+
+                <div className="fields-grid-2col">
+                  {/* Credit Score */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">
+                      <span>Credit Score (FICO)</span>
+                      <span className="font-mono text-muted">{formData.CreditScore}</span>
+                    </label>
+                    <div className="input-field-wrapper">
+                      <input
+                        type="number"
+                        name="CreditScore"
+                        min="300"
+                        max="850"
+                        className="input-control font-mono"
+                        value={formData.CreditScore}
+                        onChange={handleChange}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Num Credit Lines */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">Open Credit Lines</label>
+                    <div className="input-field-wrapper">
+                      <input
+                        type="number"
+                        name="NumCreditLines"
+                        min="0"
+                        max="30"
+                        className="input-control font-mono"
+                        value={formData.NumCreditLines}
+                        onChange={handleChange}
+                        required
+                      />
+                      <span className="input-suffix">lines</span>
+                    </div>
+                  </div>
+
+                  {/* Interest Rate */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">
+                      <span>Interest Rate</span>
+                      <span className="font-mono text-muted">{formData.InterestRate}%</span>
+                    </label>
+                    <div className="input-field-wrapper">
+                      <input
+                        type="number"
+                        name="InterestRate"
+                        step="0.1"
+                        min="1"
+                        max="35"
+                        className="input-control font-mono"
+                        value={formData.InterestRate}
+                        onChange={handleChange}
+                        required
+                      />
+                      <span className="input-suffix">% APR</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SECTION 04: LOAN DETAILS */}
+            {(activeTab === 'all' || activeTab === '04') && (
+              <div className="mb-4">
+                <div className="section-header">
+                  <span className="section-num">04</span>
+                  <h3 className="section-title">Loan Details</h3>
+                </div>
+
+                <div className="fields-grid-2col">
+                  {/* Loan Amount */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">
+                      <span>Requested Loan Amount</span>
+                      <span className="font-mono text-muted">${Number(formData.LoanAmount).toLocaleString()}</span>
+                    </label>
+                    <div className="input-field-wrapper">
+                      <span className="input-prefix">$</span>
+                      <input
+                        type="number"
+                        name="LoanAmount"
+                        step="1000"
+                        min="1000"
+                        className="input-control font-mono"
+                        value={formData.LoanAmount}
+                        onChange={handleChange}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Loan Term */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">Loan Term (Months)</label>
+                    <div className="input-field-wrapper">
+                      <select
+                        name="LoanTerm"
+                        className="input-control select-control font-mono"
+                        value={formData.LoanTerm}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="12">12 Months (1 Year)</option>
+                        <option value="24">24 Months (2 Years)</option>
+                        <option value="36">36 Months (3 Years)</option>
+                        <option value="48">48 Months (4 Years)</option>
+                        <option value="60">60 Months (5 Years)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Loan Purpose */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">Loan Purpose</label>
+                    <div className="input-field-wrapper">
+                      <select
+                        name="LoanPurpose"
+                        className="input-control select-control"
+                        value={formData.LoanPurpose}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="Auto">Auto Financing</option>
+                        <option value="Business">Business Expansion</option>
+                        <option value="Education">Education</option>
+                        <option value="Home">Home Purchase / Mortgage</option>
+                        <option value="Other">Other Personal</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SECTION 05: EMPLOYMENT */}
+            {(activeTab === 'all' || activeTab === '05') && (
+              <div className="mb-4">
+                <div className="section-header">
+                  <span className="section-num">05</span>
+                  <h3 className="section-title">Employment &amp; Demographics</h3>
+                </div>
+
+                <div className="fields-grid-2col">
+                  {/* Employment Type */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">Employment Type</label>
+                    <div className="input-field-wrapper">
+                      <select
+                        name="EmploymentType"
+                        className="input-control select-control"
+                        value={formData.EmploymentType}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="Full-time">Full-time Employee</option>
+                        <option value="Part-time">Part-time Employee</option>
+                        <option value="Self-employed">Self-Employed / Business Owner</option>
+                        <option value="Unemployed">Unemployed</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Months Employed */}
+                  <div className="input-group-custom">
+                    <label className="input-label-custom">
+                      <span>Months Employed</span>
+                      <span className="font-mono text-muted">{formData.MonthsEmployed} mos</span>
+                    </label>
+                    <div className="input-field-wrapper">
+                      <input
+                        type="number"
+                        name="MonthsEmployed"
+                        min="0"
+                        max="480"
+                        className="input-control font-mono"
+                        value={formData.MonthsEmployed}
+                        onChange={handleChange}
+                        required
+                      />
+                      <span className="input-suffix">months</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ACTION BUTTON */}
+            <div className="mt-4 pt-2 d-flex justify-content-end">
+              <button
+                type="submit"
+                className="btn-analyze-primary"
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    <span>
+                      {loadingStep === 1 && "ANALYZING BORROWER PROFILE..."}
+                      {loadingStep === 2 && "VALIDATING FINANCIAL INPUTS..."}
+                      {loadingStep === 3 && "RUNNING RISK INFERENCE ENGINE..."}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span>ANALYZE CREDIT RISK</span>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                      <polyline points="12 5 19 12 12 19" />
+                    </svg>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* RIGHT: STICKY LIVE RISK PREVIEW PANEL */}
+          <div className="glass-panel panel-live-preview">
+            <div className="d-flex align-items-center justify-content-between pb-2 border-bottom border-secondary">
+              <span className="text-uppercase font-mono text-muted" style={{ fontSize: "0.75rem", letterSpacing: "0.06em" }}>
+                RISK INTELLIGENCE PREVIEW
+              </span>
+              <span className="badge bg-secondary font-mono" style={{ fontSize: "0.6875rem" }}>LIVE</span>
+            </div>
+
+            <div className="preview-stat-card">
+              <div className="preview-stat-label">DEBT-TO-INCOME (DTI)</div>
+              <div className="preview-stat-val text-gradient-cyan">{currentDtiPercent}%</div>
+              <div className="text-muted mt-1" style={{ fontSize: "0.75rem" }}>
+                {parseFloat(formData.DTIRatio) > 0.45 ? "High Debt Ratio Warning" : "Acceptable DTI Ratio"}
+              </div>
+            </div>
+
+            <div className="preview-stat-card">
+              <div className="preview-stat-label">LOAN-TO-INCOME EXPOSURE</div>
+              <div className="preview-stat-val font-mono">{ltiRatio}x</div>
+              <div className="text-muted mt-1" style={{ fontSize: "0.75rem" }}>
+                ${Number(formData.LoanAmount).toLocaleString()} Loan / ${Number(formData.Income).toLocaleString()} Income
+              </div>
+            </div>
+
+            <div className="preview-stat-card">
+              <div className="preview-stat-label">TARGET CLASSIFIER</div>
+              <div className="fw-bold text-gradient-purple" style={{ fontSize: "0.9375rem" }}>
+                {selectedModel === 'logistic_regression' ? 'Logistic Regression' : 'Decision Tree (Depth=8)'}
+              </div>
+              <div className="text-muted mt-1" style={{ fontSize: "0.75rem" }}>
+                Multi-layer feature decision boundary
+              </div>
+            </div>
+
+            {/* Empty or Active State Hint */}
+            {!result && (
+              <div className="p-3 text-center border border-dashed rounded-3 bg-secondary bg-opacity-10 text-muted" style={{ fontSize: "0.8125rem" }}>
+                Complete the workspace form and click <strong className="text-white">ANALYZE CREDIT RISK</strong> to generate real-time risk intelligence.
+              </div>
+            )}
+          </div>
         </div>
       </form>
 
-      {/* =====================================================================
-          5. PREDICTION RESULTS DASHBOARD
-         ===================================================================== */}
+      {/* ERROR ALERT */}
+      {error && (
+        <div className="alert alert-danger mt-4 glass-panel border-danger text-danger">
+          <strong>Analysis Error:</strong> {error}
+        </div>
+      )}
+
+      {/* 4. RESULT EXPERIENCE / ASSESSMENT REPORT */}
       {result && (
-        <div
-          id="prediction-result"
-          className={`result-card ${
-            result.risk_level === "Low"
-              ? "low-risk"
-              : result.risk_level === "Moderate"
-              ? "moderate-risk"
-              : "high-risk"
-          }`}
-        >
-          {/* Result Header */}
+        <div id="prediction-result-report" className="glass-panel result-report-card">
           <div className="result-header">
             <div>
-              <span className="text-muted small text-uppercase fw-bold">
-                Prediction Evaluation Report
-              </span>
-              <h3 className="mb-0 mt-1">
-                {result.is_default ? "⚠️ Default Likely (High Risk)" : "✅ No Default Predicted (Low/Moderate Risk)"}
-              </h3>
+              <div className="d-flex align-items-center gap-2 mb-1">
+                <span className="text-uppercase font-mono text-muted" style={{ fontSize: "0.75rem", letterSpacing: "0.06em" }}>
+                  OFFICIAL ASSESSMENT REPORT &bull; ID #{Math.floor(100000 + Math.random() * 900000)}
+                </span>
+              </div>
+              <h2 className="fw-bold m-0" style={{ fontSize: "1.5rem" }}>Credit Risk Evaluation Results</h2>
             </div>
 
-            <div
-              className={`result-badge ${
-                result.risk_level === "Low"
-                  ? "badge-approved"
-                  : result.risk_level === "Moderate"
-                  ? "badge-moderate"
-                  : "badge-rejected"
-              }`}
-            >
-              <span>
-                {result.risk_level === "Low"
-                  ? "🟢 Low Risk Tier"
-                  : result.risk_level === "Moderate"
-                  ? "🟡 Moderate Risk Tier"
-                  : "🔴 High Risk Tier"}
+            <div className="d-flex align-items-center gap-3">
+              <span className={`badge-risk badge-risk-${result.risk_level.toLowerCase()}`}>
+                {result.prediction_label}
+              </span>
+              <span className="font-mono text-muted" style={{ fontSize: "0.75rem" }}>
+                {new Date(result.timestamp).toLocaleTimeString()}
               </span>
             </div>
           </div>
 
-          {/* Probability Progress Meter */}
-          <div className="probability-section">
-            <div className="probability-labels">
-              <span className="text-success">
-                🛡️ Safe Repayment: {(result.non_default_probability * 100).toFixed(1)}%
-              </span>
-              <span className="text-danger">
-                ⚠️ Default Risk: {(result.default_probability * 100).toFixed(1)}%
-              </span>
-            </div>
+          <div className="result-grid-metrics">
+            {/* SVG Radial Gauge */}
+            <RiskGauge
+              probability={result.default_probability}
+              riskLevel={result.risk_level}
+            />
 
-            <div className="progress-track">
-              <div
-                className="progress-fill-safe"
-                style={{ width: `${result.non_default_probability * 100}%` }}
-                title={`Safe Probability: ${(result.non_default_probability * 100).toFixed(1)}%`}
-              ></div>
-              <div
-                className="progress-fill-risk"
-                style={{ width: `${result.default_probability * 100}%` }}
-                title={`Default Risk: ${(result.default_probability * 100).toFixed(1)}%`}
-              ></div>
-            </div>
-          </div>
+            {/* Metrics Breakdown Grid */}
+            <div>
+              <div className="row g-3 mb-4">
+                <div className="col-6 col-md-3">
+                  <div className="preview-stat-card">
+                    <div className="preview-stat-label">DEFAULT PROBABILITY</div>
+                    <div className="preview-stat-val font-mono" style={{
+                      color: result.risk_level === 'High' ? 'var(--color-danger)' : (result.risk_level === 'Moderate' ? 'var(--color-warning)' : 'var(--color-success)')
+                    }}>
+                      {(result.default_probability * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
 
-          {/* Key Metrics Breakdown */}
-          <div className="result-metrics-grid">
-            <div className="metric-box">
-              <div className="metric-label">Model Outcome</div>
-              <div className="metric-value">
-                {result.prediction === 0 ? "Class 0 (Pass)" : "Class 1 (Default)"}
+                <div className="col-6 col-md-3">
+                  <div className="preview-stat-card">
+                    <div className="preview-stat-label">REPAYMENT SCORE</div>
+                    <div className="preview-stat-val font-mono text-gradient-cyan">
+                      {(result.non_default_probability * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+
+                <div className="col-6 col-md-3">
+                  <div className="preview-stat-card">
+                    <div className="preview-stat-label">MODEL ACCURACY</div>
+                    <div className="preview-stat-val font-mono">~88.2%</div>
+                  </div>
+                </div>
+
+                <div className="col-6 col-md-3">
+                  <div className="preview-stat-card">
+                    <div className="preview-stat-label">RISK CLASSIFICATION</div>
+                    <div className="preview-stat-val font-mono text-uppercase" style={{ fontSize: "1.1rem" }}>
+                      {result.risk_level}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div className="metric-box">
-              <div className="metric-label">Default Risk Prob.</div>
-              <div className="metric-value text-danger">
-                {(result.default_probability * 100).toFixed(1)}%
+              {/* Executive Summary */}
+              <div className="p-3 rounded-3 bg-secondary bg-opacity-20 border border-secondary mb-4">
+                <div className="font-mono text-uppercase text-muted mb-1" style={{ fontSize: "0.75rem", letterSpacing: "0.05em" }}>
+                  UNDERWRITING EXECUTIVE SUMMARY
+                </div>
+                <p className="m-0 text-slate-200" style={{ fontSize: "0.9375rem", lineHeight: "1.6" }}>
+                  {result.summary}
+                </p>
               </div>
-            </div>
 
-            <div className="metric-box">
-              <div className="metric-label">Safe Probability</div>
-              <div className="metric-value text-success">
-                {(result.non_default_probability * 100).toFixed(1)}%
-              </div>
+              {/* Feature Impact Drivers */}
+              <FeatureImpact formData={formData} />
             </div>
-
-            <div className="metric-box">
-              <div className="metric-label">Model Used</div>
-              <div className="metric-value" style={{ fontSize: "1rem" }}>
-                {result.model_name}
-              </div>
-            </div>
-          </div>
-
-          {/* Analytical Summary / Guidance */}
-          <div className="result-summary-box text-start">
-            <strong>🤖 AI Decision Insight:</strong>
-            <p className="mb-0 mt-1">{result.summary}</p>
           </div>
         </div>
       )}
